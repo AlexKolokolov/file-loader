@@ -29,10 +29,14 @@ public class DownloadService {
         }
         try {
             if (!file.exists()) file.createNewFile();
+            long startTime = System.currentTimeMillis();
             FileUtils.copyURLToFile(url, file, 3000, 3000);
-            String fileSize = FileUtils.byteCountToDisplaySize(FileUtils.sizeOf(file));
+            long downloadTime = System.currentTimeMillis() - startTime;
+            long byteSize = FileUtils.sizeOf(file);
+            long downlodSpeed = 1000 * byteSize / downloadTime;
+            String fileSize = FileUtils.byteCountToDisplaySize(byteSize);
             synchronized (this) {
-                System.out.printf("File %s : %s has been downloaded%n", file.getName(), fileSize);
+                System.out.printf("File %s : %s : %d bit/s has been downloaded%n", file.getName(), fileSize, downlodSpeed);
             }
             return true;
         } catch (IOException ioe) {
