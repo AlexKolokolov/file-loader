@@ -159,16 +159,16 @@ public class App {
             System.out.printf("Failed : %d%n", failed);
             System.out.printf("Total size : %s%n", FileUtils.byteCountToDisplaySize(downloadedSize));
             System.out.printf("Downloading time : %.03f sec%n", (double) elapsedTime / 1000);
-            System.out.printf("Average downloading speed : %d bit/sec%n", 1000 * downloadedSize / elapsedTime);
+            System.out.printf("Average download speed : %d kbit/sec%n", 8 * 1000 * downloadedSize / elapsedTime / 1000);
         }
     }
 
     public void setDependensies() {
         this.parser = new TaskFileParser();
         if (threadLimit != 0) {
-            this.downloadService = new DownloadService(new ThreadService(threadLimit));
+            this.downloadService = new DownloadService(new ThreadService(threadLimit), 100);
         } else {
-            this.downloadService = new DownloadService();
+            this.downloadService = new DownloadService(100);
         }
     }
     
