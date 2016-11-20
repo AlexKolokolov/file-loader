@@ -4,13 +4,18 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 
+/**
+ * Service is designed for parsing a file with download tasks and return a set of
+ * task to main application
+ * @author kolokolov
+ */
 public class TaskFileParser {
 
     public Set<TaskDescription> parseTaskFile(File file) {
@@ -19,17 +24,17 @@ public class TaskFileParser {
             if (lines != null) {
                 Set<TaskDescription> taskSet = linesToTaskSet(lines);
                 if (taskSet != null) {
-                    if (!targetFilesDuplicates(taskSet)) {
+                    if (!targetFileHasDuplicates(taskSet)) {
                         return taskSet;
                     } else {
-                        System.err.printf("Task file %s includes target file duplications%n", file.getName());
+                        System.err.printf("Task file '%s' includes target file duplications%n", file.getName());
                     }
                 } else {
-                    System.err.printf("Task file %s format errors%n", file.getName());
+                    System.err.printf("Task file '%s' format errors%n", file.getName());
                 }
             }
         } else {
-            System.err.printf("Task file %s does not exist or can not be read%n", file.getName());
+            System.err.printf("Task file '%s' does not exist or can not be read%n", file.getName());
         }
         return null;
     }
@@ -43,9 +48,9 @@ public class TaskFileParser {
         }
         return lines;
     }
-
+    
     public Set<TaskDescription> linesToTaskSet(List<String> lines) {
-        Set<TaskDescription> taskSet = new LinkedHashSet<>();
+        Set<TaskDescription> taskSet = new HashSet<>();
         for (String line : lines) {
             String[] pair = line.split(" ");
             if (pair.length != 2)
@@ -54,22 +59,23 @@ public class TaskFileParser {
         }
         return taskSet;
     }
-
-    public boolean targetFilesDuplicates(Set<TaskDescription> taskSet) {
+    
+    /**
+     * Method checks whether there were equal target file names mapped on different links
+     * in the task file.
+     * @param set of download task descriptions.
+     * @return true if the target file name duplications are present in task file
+     */
+    public boolean targetFileHasDuplicates(Set<TaskDescription> taskSet) {
         Map<String, TaskDescription> testMap = new HashMap<>();
         taskSet.forEach((task) -> testMap.put(task.getFile(), task));
         return testMap.size() != taskSet.size();
     }
-
-    public static void main(String[] args) {
-        Set<TaskDescription> set = new TaskFileParser().parseTaskFile(new File("./in/links.dat"));
-        if (set != null)
-            set.forEach((t) -> {
-                if (t != null)
-                    System.out.println(t.getUrl() + " : " + t.getFile());
-            });
-    }
-
+    
+    /**
+     * Class is designed for task description storing.
+     * @author kolokolov
+     */
     public static class TaskDescription {
         private String url;
         private String file;

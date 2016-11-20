@@ -25,12 +25,14 @@ import org.kolokolov.fileloader.service.ThreadService;
 
 /**
  * Main application class with main method
- * @author Alex Kolokolov
+ * 
+ * @author kolokolov
  */
 public class App {
 
     private static String taskFileName;
-    private static int threadLimit;
+    private static int threadsNumber;
+    private static int speedLimit;
     private static String outputFolderName = "download";
 
     private Set<Task> tasks;
@@ -40,35 +42,62 @@ public class App {
     private int failed;
     private long elapsedTime;
 
-    Map<Task, Future<Boolean>> downloadReports = new HashMap<>();
+    private Map<Task, Future<Boolean>> downloadReports = new HashMap<>();
 
     private TaskFileParser parser;
     private DownloadService downloadService;
-    
+
+    public App() {
+        this.parser = new TaskFileParser();
+        this.downloadService = new DownloadService(new ThreadService(threadsNumber), speedLimit);
+    }
+
     public static void main(String[] args) {
-        
+
         App.parseArgs(args);
-        
+
         App app = new App();
-        app.setDependensies();
+        app.printInitReport();
         app.getTasks();
         app.processTasks();
         app.printReport();
         System.exit(0);
     }
-
-    public static void parseArgs(String[] args) {
+    
+    public void printInitReport() {
+        if (speedLimit > 0) {
+            System.out.printf("Download speed limit = %.03f kbit/s%n", (double) speedLimit / 1024);
+        } else {
+            System.out.println("No speed limit");
+        }
         
+        if (threadsNumber > 0) {
+            System.out.printf("Download threads: %d%n", threadsNumber);
+        } else {
+            System.out.printf("Download threads number was not specified");
+        }
+    }
+
+    /**
+     * Method parses the command line argument set and stores the values
+     * received form it in static variables.
+     * @param comand line args array
+     */
+    public static void parseArgs(String[] args) {
+
         Options options = new Options();
         Option taskFile = new Option("f", "file", true, "task file name");
         taskFile.setRequired(true);
         options.addOption(taskFile);
 
-        Option limit = new Option("n", true, "number of downloading threads");
-        options.addOption(limit);
-        
-        Option output = new Option("o", "output", true,"output folder");
+        Option threads = new Option("n", true, "number of downloading threads");
+        options.addOption(threads);
+
+        Option output = new Option("o", "output", true, "output folder");
         options.addOption(output);
+
+        Option limit = new Option("l", "limit", true, "speed limit");
+        options.addOption(limit);
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -82,55 +111,80 @@ public class App {
         }
 
         taskFileName = cmdLine.getOptionValue("file");
-        String sThreadLimit = cmdLine.getOptionValue("n");
-        if (sThreadLimit != null) {
-            threadLimit = Integer.parseInt(sThreadLimit);
+
+        String sThreadsNumber = cmdLine.getOptionValue("n");
+        if (sThreadsNumber != null) {
+            threadsNumber = Integer.parseInt(sThreadsNumber);
         }
+
         String outputFolder = cmdLine.getOptionValue("o");
         if (outputFolder != null) {
             outputFolderName = outputFolder;
         }
+
+        String sSpeedLimit = cmdLine.getOptionValue("l");
+        if (sSpeedLimit != null) {
+            int factor = 1;
+            if (sSpeedLimit.endsWith("k")) {
+                factor = 1024;
+            }
+            if (sSpeedLimit.endsWith("m")) {
+                factor = 1024 * 1024;
+            }
+            speedLimit = Integer.parseInt(sSpeedLimit.split("\\D")[0]) * factor;
+        }
     }
     
+    /**
+     * Method analyzes passed an output folder name and creates the folder
+     * if it does not exist and can be created.
+     * If it failed to create the folder it would close the application
+     * with error code '1'.
+     * @return created folder
+     */
     public File createOutputFolder() {
-       File outputFolder = new File(outputFolderName);
-       if (!outputFolder.exists() && !outputFolder.mkdirs()) {
-           System.err.printf("Can not create output folder '%s'%n", outputFolder.getAbsolutePath());
-           System.exit(1);
-       } else if (!outputFolder.isDirectory()) {
-           System.err.printf("Existing file '%s' can not be an output folder%n", outputFolder.getAbsolutePath());
-           System.exit(1);
-       }
-       return outputFolder;
+        File outputFolder = new File(outputFolderName);
+        if (!outputFolder.exists() && !outputFolder.mkdirs()) {
+            System.err.printf("Can not create output folder '%s'%n", outputFolder.getAbsolutePath());
+            System.exit(1);
+        } else if (!outputFolder.isDirectory()) {
+            System.err.printf("Existing file '%s' can not be an output folder%n", outputFolder.getAbsolutePath());
+            System.exit(1);
+        }
+        return outputFolder;
     }
 
     public void getTasks() {
         File outputFolder = createOutputFolder();
-        System.out.printf("Starting download to %s%n", outputFolder.getAbsolutePath());
-        Set<TaskDescription> taskDescriptions = parser.parseTaskFile(new File(taskFileName));
+        File taskFile = new File(taskFileName);
+        System.out.printf("Processing task file '%s'%n", taskFile.getName());
+        Set<TaskDescription> taskDescriptions = parser.parseTaskFile(taskFile);
         if (taskDescriptions != null) {
-            tasks = taskDescriptions.stream().map(td -> {
+            tasks = taskDescriptions.parallelStream().map(td -> {
                 File file = new File(outputFolder, td.getFile());
                 try {
+                    System.out.printf("Processing URL: '%s'%n", td.getUrl());
                     URL url = new URL(td.getUrl());
                     return new Task(url, file);
                 } catch (IOException ioe) {
-                    System.out.printf("Error processing task description %s : %s%n", td.getUrl(), td.getFile());
+                    System.out.printf("Error processing task description '%s : %s'%n", td.getUrl(), td.getFile());
                     System.out.printf("Error message: %s%n", ioe.getMessage());
                     return null;
                 }
             }).collect(Collectors.toSet());
             tasksTotal = tasks.size();
+            System.out.printf("Total tasks: %d%n", tasksTotal);
+            System.out.printf("Output folder: '%s'%n", outputFolder.getAbsolutePath());
         } else {
-            System.err.printf("Error getting tasks from file %s%n", taskFileName);
+            System.err.printf("Error getting tasks from file '%s'%n", taskFile.getName());
             System.exit(1);
         }
     }
 
     public void processTasks() {
-        
+
         long startTime = System.currentTimeMillis();
-        
+
         for (Task task : tasks) {
             if (task != null) {
                 downloadReports.put(task, downloadService.downloadFileInNewThread(task.getUrl(), task.getFile()));
@@ -139,43 +193,34 @@ public class App {
 
         downloadReports.forEach((task, report) -> {
             try {
-                if (report.get()){
+                if (report.get()) {
                     downloaded++;
                     downloadedSize += FileUtils.sizeOf(task.getFile());
-                } else failed++;
+                } else
+                    failed++;
             } catch (InterruptedException | ExecutionException e) {
-                e.printStackTrace();
+                System.out.printf("File '%s' downloading error%n", task.getFile().getName());
+                System.out.printf("Error message: %s%n", e.getMessage());
             }
         });
-        
+
         elapsedTime = System.currentTimeMillis() - startTime;
     }
 
     public void printReport() {
-        synchronized (downloadService) {
-            System.out.println("Download has been completed");
-            System.out.printf("Tasks total : %d%n", tasksTotal);
-            System.out.printf("Downloaded : %d%n", downloaded);
-            System.out.printf("Failed : %d%n", failed);
-            System.out.printf("Total size : %s%n", FileUtils.byteCountToDisplaySize(downloadedSize));
-            System.out.printf("Downloading time : %.03f sec%n", (double) elapsedTime / 1000);
-            System.out.printf("Average download speed : %d kbit/sec%n", 8 * 1000 * downloadedSize / elapsedTime / 1000);
-        }
+        System.out.println("Download has been completed");
+        System.out.printf("Tasks total: %d%n", tasksTotal);
+        System.out.printf("Completed: %d%n", downloaded);
+        System.out.printf("Failed: %d%n", failed);
+        System.out.printf("Total downloaded size: %s%n", FileUtils.byteCountToDisplaySize(downloadedSize));
+        System.out.printf("Total download time: %.03f sec%n", (double) elapsedTime / 1000);
+        System.out.printf("Average download speed: %.03f kbit/s%n", 8.0 * 1000 * downloadedSize / elapsedTime / 1024);
     }
 
-    public void setDependensies() {
-        this.parser = new TaskFileParser();
-        if (threadLimit != 0) {
-            this.downloadService = new DownloadService(new ThreadService(threadLimit), 100);
-        } else {
-            this.downloadService = new DownloadService(100);
-        }
-    }
-    
-    public static class Task {
+    private static class Task {
         private URL url;
         private File file;
-        
+
         public Task(URL url, File file) {
             this.url = url;
             this.file = file;
