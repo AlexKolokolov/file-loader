@@ -1,9 +1,17 @@
-# file-loader
+# File-loader
+****
 
-Console file loader.
+Console file downloader. Reads tasks list from file. 
+Can download file in several threads with download speed limiting.
+****
 
-mvn package will create executable jar-file.
+`mvn package` will create executable jar-file.
 
-Usage: java -jar file-loader.jar -f task_file -n number_of_downloading_threads -o output_folder
+usage: java -jar file-loader.jar
+ -f,--file <arg>     task file name
+ -l,--limit <arg>    speed limit
+ -n <arg>            number of downloading threads
+ -o,--output <arg>   output folder
 
-task_file - simple text file with lines consisting of http link and target file separated with a whitespace.
+
+Where `task file` - is a simple text file with lines consisting of http link and target file separated with the whitespace.
