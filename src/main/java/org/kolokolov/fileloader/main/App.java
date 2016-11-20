@@ -3,12 +3,13 @@ package org.kolokolov.fileloader.main;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.stream.Collectors;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -24,8 +25,7 @@ import org.kolokolov.fileloader.service.TaskFileParser.TaskDescription;
 import org.kolokolov.fileloader.service.ThreadService;
 
 /**
- * Main application class with main method
- * 
+ * The main application class with main method
  * @author kolokolov
  */
 public class App {
@@ -35,7 +35,7 @@ public class App {
     private static int speedLimit;
     private static String outputFolderName = "download";
 
-    private Set<Task> tasks;
+    private Map<URL, Task> tasksMap = new HashMap<>();
     private int tasksTotal;
     private int downloaded;
     private long downloadedSize;
@@ -63,14 +63,14 @@ public class App {
         app.printReport();
         System.exit(0);
     }
-    
+
     public void printInitReport() {
         if (speedLimit > 0) {
             System.out.printf("Download speed limit = %.03f kbit/s%n", (double) speedLimit / 1024);
         } else {
             System.out.println("No speed limit");
         }
-        
+
         if (threadsNumber > 0) {
             System.out.printf("Download threads: %d%n", threadsNumber);
         } else {
@@ -79,9 +79,8 @@ public class App {
     }
 
     /**
-     * Method parses the command line argument set and stores the values
-     * received form it in static variables.
-     * @param comand line args array
+     * Parses the command line argument set and stores the values received form it in static variables.
+     * @param args the command line arguments array
      */
     public static void parseArgs(String[] args) {
 
@@ -134,12 +133,11 @@ public class App {
             speedLimit = Integer.parseInt(sSpeedLimit.split("\\D")[0]) * factor;
         }
     }
-    
+
     /**
-     * Method analyzes passed an output folder name and creates the folder
-     * if it does not exist and can be created.
-     * If it failed to create the folder it would close the application
-     * with error code '1'.
+     * Analyzes passed an output folder name and creates the folder if it does not exist and can be created. 
+     * If folder creation failed it would close the application with error code '1'.
+     * 
      * @return created folder
      */
     public File createOutputFolder() {
@@ -154,25 +152,32 @@ public class App {
         return outputFolder;
     }
 
+    /**
+     * Parses task file using {@link TaskFileParser}, creates instances 
+     * of {@link Task} class and stores them in a Map.
+     * If several task descriptions include the same URL, then files from
+     * such task descriptions will be added to the same task instance
+     * in order to avoid multiple downloading of the same file.
+     */
     public void getTasks() {
         File outputFolder = createOutputFolder();
         File taskFile = new File(taskFileName);
         System.out.printf("Processing task file '%s'%n", taskFile.getName());
         Set<TaskDescription> taskDescriptions = parser.parseTaskFile(taskFile);
         if (taskDescriptions != null) {
-            tasks = taskDescriptions.parallelStream().map(td -> {
+            taskDescriptions.parallelStream().forEach(td -> {
                 File file = new File(outputFolder, td.getFile());
                 try {
                     System.out.printf("Processing URL: '%s'%n", td.getUrl());
                     URL url = new URL(td.getUrl());
-                    return new Task(url, file);
+                    Task task = new Task(url, file);
+                    tasksMap.merge(url, task, Task::combainTasks);
                 } catch (IOException ioe) {
                     System.out.printf("Error processing task description '%s : %s'%n", td.getUrl(), td.getFile());
                     System.out.printf("Error message: %s%n", ioe.getMessage());
-                    return null;
                 }
-            }).collect(Collectors.toSet());
-            tasksTotal = tasks.size();
+            });
+            tasksTotal = tasksMap.size();
             System.out.printf("Total tasks: %d%n", tasksTotal);
             System.out.printf("Output folder: '%s'%n", outputFolder.getAbsolutePath());
         } else {
@@ -181,25 +186,26 @@ public class App {
         }
     }
 
+    /**
+     * Process the map with task stored in. Tries to perform every task using {@link DownloadService} 
+     * and then stores the results of tasks performing to reports map.
+     */
     public void processTasks() {
 
         long startTime = System.currentTimeMillis();
 
-        for (Task task : tasks) {
-            if (task != null) {
-                downloadReports.put(task, downloadService.downloadFileInNewThread(task.getUrl(), task.getFile()));
-            }
-        }
+        tasksMap.values().forEach(task -> downloadReports.put(task,
+                downloadService.downloadFilesInNewThread(task.getUrl(), task.getFiles())));
 
         downloadReports.forEach((task, report) -> {
             try {
                 if (report.get()) {
                     downloaded++;
-                    downloadedSize += FileUtils.sizeOf(task.getFile());
+                    downloadedSize += FileUtils.sizeOf(task.getOneOfFiles());
                 } else
                     failed++;
             } catch (InterruptedException | ExecutionException e) {
-                System.out.printf("File '%s' downloading error%n", task.getFile().getName());
+                System.out.printf("Error downloading from %s%n", task.getOneOfFiles());
                 System.out.printf("Error message: %s%n", e.getMessage());
             }
         });
@@ -219,26 +225,39 @@ public class App {
 
     private static class Task {
         private URL url;
-        private File file;
+        private List<File> files = new ArrayList<>();
 
         public Task(URL url, File file) {
             this.url = url;
-            this.file = file;
+            this.files.add(file);
+        }
+
+        public Task(URL url, List<File> files) {
+            this.url = url;
+            this.files.addAll(files);
         }
 
         public URL getUrl() {
             return url;
         }
 
-        public File getFile() {
-            return file;
+        public File getOneOfFiles() {
+            return files.get(0);
+        }
+
+        public List<File> getFiles() {
+            return this.files;
+        }
+
+        public void addFiles(List<File> files) {
+            this.files.addAll(files);
         }
 
         @Override
         public int hashCode() {
             final int prime = 31;
             int result = 1;
-            result = prime * result + ((file == null) ? 0 : file.hashCode());
+            result = prime * result + ((files == null) ? 0 : files.hashCode());
             result = prime * result + ((url == null) ? 0 : url.hashCode());
             return result;
         }
@@ -252,10 +271,10 @@ public class App {
             if (getClass() != obj.getClass())
                 return false;
             Task other = (Task) obj;
-            if (file == null) {
-                if (other.file != null)
+            if (files == null) {
+                if (other.files != null)
                     return false;
-            } else if (!file.equals(other.file))
+            } else if (!files.equals(other.files))
                 return false;
             if (url == null) {
                 if (other.url != null)
@@ -263,6 +282,12 @@ public class App {
             } else if (!url.equals(other.url))
                 return false;
             return true;
+        }
+
+        public static Task combainTasks(Task t1, Task t2) {
+            Task result = new Task(t1.getUrl(), t1.getFiles());
+            result.addFiles(t2.getFiles());
+            return result;
         }
     }
 }

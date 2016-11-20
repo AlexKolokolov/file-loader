@@ -4,16 +4,16 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
 
 /**
- * Service is designed for parsing a file with download tasks and return a set of task to main application
- * 
+ * The service is designed for parsing a download tasks file 
+ * and return a set of task descriptions to main application
  * @author kolokolov
  */
 public class TaskFileParser {
@@ -50,25 +50,26 @@ public class TaskFileParser {
     }
 
     public Set<TaskDescription> linesToTaskSet(List<String> lines) {
-        Set<TaskDescription> taskSet = new HashSet<>();
-        for (String line : lines) {
+        return lines.parallelStream().map(line -> {
             String[] pair = line.split(" ");
-            if (pair.length != 2)
+            if (pair.length == 2) {
+                return new TaskDescription(pair[0], pair[1]);
+            } else {
+                System.out.printf("Error processing line %s%n", line);
                 return null;
-            taskSet.add(new TaskDescription(pair[0], pair[1]));
-        }
-        return taskSet;
+            }
+        }).filter(td -> td != null).collect(Collectors.toSet());
     }
 
     /**
-     * Method checks whether there were equal target file names mapped on different links in the task file.
-     * 
+     * Method checks whether there were equal target file names 
+     * mapped on different links in the task file.
      * @param set of download task descriptions.
      * @return true if the target file name duplications are present in task file
      */
     public boolean targetFileHasDuplicates(Set<TaskDescription> taskSet) {
         Map<String, TaskDescription> testMap = new HashMap<>();
-        taskSet.forEach((task) -> {
+        taskSet.forEach(task -> {
             TaskDescription duplication;
             if ((duplication = testMap.put(task.getFile(), task)) != null) {
                 System.out.printf("File name '%s' mapped on different links was found%n", duplication.getFile());
