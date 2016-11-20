@@ -12,8 +12,8 @@ import java.util.Set;
 import org.apache.commons.io.FileUtils;
 
 /**
- * Service is designed for parsing a file with download tasks and return a set of
- * task to main application
+ * Service is designed for parsing a file with download tasks and return a set of task to main application
+ * 
  * @author kolokolov
  */
 public class TaskFileParser {
@@ -48,7 +48,7 @@ public class TaskFileParser {
         }
         return lines;
     }
-    
+
     public Set<TaskDescription> linesToTaskSet(List<String> lines) {
         Set<TaskDescription> taskSet = new HashSet<>();
         for (String line : lines) {
@@ -59,21 +59,27 @@ public class TaskFileParser {
         }
         return taskSet;
     }
-    
+
     /**
-     * Method checks whether there were equal target file names mapped on different links
-     * in the task file.
+     * Method checks whether there were equal target file names mapped on different links in the task file.
+     * 
      * @param set of download task descriptions.
      * @return true if the target file name duplications are present in task file
      */
     public boolean targetFileHasDuplicates(Set<TaskDescription> taskSet) {
         Map<String, TaskDescription> testMap = new HashMap<>();
-        taskSet.forEach((task) -> testMap.put(task.getFile(), task));
+        taskSet.forEach((task) -> {
+            TaskDescription duplication;
+            if ((duplication = testMap.put(task.getFile(), task)) != null) {
+                System.out.printf("File name '%s' mapped on different links was found%n", duplication.getFile());
+            }
+        });
         return testMap.size() != taskSet.size();
     }
-    
+
     /**
      * Class is designed for task description storing.
+     * 
      * @author kolokolov
      */
     public static class TaskDescription {
