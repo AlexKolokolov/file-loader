@@ -74,7 +74,7 @@ public class App {
         if (threadsNumber > 0) {
             System.out.printf("Download threads: %d%n", threadsNumber);
         } else {
-            System.out.printf("Download threads number was not specified");
+            System.out.println("Download threads number was not specified");
         }
     }
 
