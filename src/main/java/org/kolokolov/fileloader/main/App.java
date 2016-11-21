@@ -249,10 +249,6 @@ public class App {
             return this.files;
         }
 
-        public void addFiles(List<File> files) {
-            this.files.addAll(files);
-        }
-
         @Override
         public int hashCode() {
             final int prime = 31;
@@ -285,8 +281,8 @@ public class App {
         }
 
         public static Task combainTasks(Task t1, Task t2) {
-            Task result = new Task(t1.getUrl(), t1.getFiles());
-            result.addFiles(t2.getFiles());
+            Task result = new Task(t1.url, t1.files);
+            result.files.addAll(t2.files);
             return result;
         }
     }
