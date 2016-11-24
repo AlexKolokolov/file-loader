@@ -149,8 +149,8 @@ public class DownloadService {
         private int bucket;
         
         private final Lock lock = new ReentrantLock();
-        private final Condition notEmpty = lock.newCondition();
-        private final Condition notFull = lock.newCondition();
+        private final Condition enoughTokens = lock.newCondition();
+        private final Condition notFullBucket = lock.newCondition();
         
         public TokenBucket(int speedLimit) {
             this.SPEED_LIMIT = speedLimit;
@@ -167,16 +167,21 @@ public class DownloadService {
                     lock.lock();
                     try {
                         while (bucket >= BUCKET_LIMIT) {
-                            notFull.await();
+                            notFullBucket.await();
                         }
                         bucket += BUCKET_FILLING_STEP;
-                        Thread.sleep(BUCKET_FILLING_DELAY);
-                        notEmpty.signalAll();
+                        enoughTokens.signalAll();
                     } catch (InterruptedException e) {
                         System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
                         System.exit(1);
                     } finally {
                         lock.unlock();
+                        try {
+                            Thread.sleep(BUCKET_FILLING_DELAY);
+                        } catch (InterruptedException e) {
+                            System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
+                            System.exit(1);
+                        }
                     }
                 }
             });
@@ -188,10 +193,10 @@ public class DownloadService {
             lock.lock();
             try {
                 while (bucket < byteCount) {
-                    notEmpty.await();
+                    enoughTokens.await();
                 }
                 bucket -= byteCount;
-                notFull.signal();
+                notFullBucket.signal();
             } finally {
                 lock.unlock();
             }
