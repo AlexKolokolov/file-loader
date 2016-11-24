@@ -148,9 +148,9 @@ public class DownloadService {
         
         private int bucket;
         
-        private final Lock lock = new ReentrantLock();
-        private final Condition enoughTokens = lock.newCondition();
-        private final Condition notFullBucket = lock.newCondition();
+        private final Lock bucketLock = new ReentrantLock();
+        private final Condition enoughTokens = bucketLock.newCondition();
+        private final Condition notFullBucket = bucketLock.newCondition();
         
         public TokenBucket(int speedLimit) {
             this.SPEED_LIMIT = speedLimit;
@@ -164,7 +164,7 @@ public class DownloadService {
             
             Thread bucketFiller = new Thread(() -> {
                 while (true) {
-                    lock.lock();
+                    bucketLock.lock();
                     try {
                         while (bucket >= BUCKET_LIMIT) {
                             notFullBucket.await();
@@ -175,7 +175,7 @@ public class DownloadService {
                         System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
                         System.exit(1);
                     } finally {
-                        lock.unlock();
+                        bucketLock.unlock();
                         try {
                             Thread.sleep(BUCKET_FILLING_DELAY);
                         } catch (InterruptedException e) {
@@ -190,7 +190,7 @@ public class DownloadService {
         }
 
         public void emptyBucket(int byteCount) throws InterruptedException {
-            lock.lock();
+            bucketLock.lock();
             try {
                 while (bucket < byteCount) {
                     enoughTokens.await();
@@ -198,7 +198,7 @@ public class DownloadService {
                 bucket -= byteCount;
                 notFullBucket.signal();
             } finally {
-                lock.unlock();
+                bucketLock.unlock();
             }
         }
     }
