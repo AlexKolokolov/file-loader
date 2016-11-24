@@ -31,4 +31,11 @@ public class ThreadService {
     public Future<Boolean> executeInNewThread(BooleanSupplier supplier) {
         return pool.submit(() -> supplier.getAsBoolean());
     }
+    
+    public Thread startNewDaemon(Runnable runnable) {
+        Thread newDaemon = new Thread(() -> runnable.run());
+        newDaemon.setDaemon(true);
+        newDaemon.start();
+        return newDaemon;
+    }
 }

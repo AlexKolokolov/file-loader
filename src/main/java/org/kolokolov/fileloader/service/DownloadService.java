@@ -21,9 +21,9 @@ import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 
 /**
- * The service designed to perform copying data from an URL to a file.
- * It uses {@link ThreadService} to provide each file copying in different thread
- * and {@link TokenBucket} to limit copying speed.
+ * The service designed to perform copying data from an URL to a file. It uses {@link ThreadService} to provide each
+ * file copying in different thread and {@link TokenBucket} to limit copying speed.
+ * 
  * @author kolokolov
  */
 public class DownloadService {
@@ -32,41 +32,51 @@ public class DownloadService {
 
     private ThreadService threadService;
     private TokenBucket tokenBuket;
+    
+    private Thread bucketFiller;
 
     /**
-     * Creates an instance of the DownloadService class.
-     * If a proper speed limit value is passed than an instance of TokenBucket class
-     * is also created. Otherwise no TokenBucket class will be created and no speed limit set. 
-     * @param threadService an instance of the {@link ThreadService} class providing method executing
-     * in new thread.
-     * @param speedLimit    int value of speed limit in bits/s. If this value is equal or less than 0,
-     * than no speed limit is set. 
+     * Creates an instance of the DownloadService class. If a proper speed limit value is passed than an instance of
+     * TokenBucket class is also created. Otherwise no TokenBucket class will be created and no speed limit set.
+     * 
+     * @param threadService an instance of the {@link ThreadService} class providing method executing in new thread.
+     * @param speedLimit int value of speed limit in bits/s. If this value is equal or less than 0, than no speed limit
+     *            is set.
      */
     public DownloadService(ThreadService threadService, int speedLimit) {
         this.threadService = threadService;
         if (speedLimit > 0) {
             this.tokenBuket = new TokenBucket(speedLimit);
+            this.bucketFiller = this.threadService.startNewDaemon(() -> {
+                try {
+                    this.tokenBuket.fillBucket();
+                } catch (InterruptedException e) {
+                    System.out.printf("Fatal error! Error message %s%n", e.getMessage());
+                    System.exit(1);
+                }
+            });
+            
         }
     }
-    
+
     /**
-     * Provides the downloadFiles() method execution in new thread
-     * using {@link ThreadService} object.
-     * @param url   an absolute URL of a web resource representing a file
+     * Provides the downloadFiles() method execution in new thread using {@link ThreadService} object.
+     * 
+     * @param url an absolute URL of a web resource representing a file
      * @param files Collection of files for storing data read from web resource in
-     * @return      an object with the Future interface that returns the result
-     * returned by the lambda expression after its execution.
+     * @return an object with the Future interface that returns the result returned by the lambda expression after its
+     *         execution.
      */
     public Future<Boolean> downloadFilesInNewThread(URL url, List<File> files) {
         return threadService.executeInNewThread(() -> downloadFiles(url, files));
     }
-    
+
     /**
-     * Reads data form a web resource presented with an URL and than stores it
-     * in one or several files.
-     * @param url   an absolute URL of a web resource representing a file
+     * Reads data form a web resource presented with an URL and than stores it in one or several files.
+     * 
+     * @param url an absolute URL of a web resource representing a file
      * @param files Collection of files for storing data read from web resource in
-     * @return      true if data reading and storing succeeded.
+     * @return true if data reading and storing succeeded.
      */
     public boolean downloadFiles(URL url, List<File> files) {
         boolean multipleFiles = files.size() > 1;
@@ -85,16 +95,16 @@ public class DownloadService {
             }
 
             long startTime = System.currentTimeMillis();
-            
+
             copyBytesIfAllowed(input, output);
-            
-            long downloadTime = System.currentTimeMillis() - startTime; //ms
-            long fileSize = FileUtils.sizeOf(files.get(0)); //bytes
-            long downlodSpeed = 8 * fileSize * 1000 / downloadTime / 1024; //kbit/s
-            String displayFileSize = FileUtils.byteCountToDisplaySize(fileSize); //in human readable format
+
+            long downloadTime = System.currentTimeMillis() - startTime; // ms
+            long fileSize = FileUtils.sizeOf(files.get(0)); // bytes
+            long downlodSpeed = 8 * fileSize * 1000 / downloadTime / 1024; // kbit/s
+            String displayFileSize = FileUtils.byteCountToDisplaySize(fileSize); // in human readable format
             if (multipleFiles) {
                 System.out.printf("Files %s (%s each) have been downloaded at %d kbit/s%n", fileNames, displayFileSize,
-                    downlodSpeed);
+                        downlodSpeed);
             } else {
                 System.out.printf("File %s (%s) has been downloaded at %d kbit/s%n", fileNames, displayFileSize,
                         downlodSpeed);
@@ -110,12 +120,13 @@ public class DownloadService {
             return false;
         }
     }
-    
+
     /**
-     * Reads data from an input stream and then writes it to an output stream 
-     * if token bucket exists and allows this action.  
-     * @param souce     an instance of the InputStream
-     * @param target    an instance of the OutputStream
+     * Reads data from an input stream and then writes it to an output stream if token bucket exists and allows this
+     * action.
+     * 
+     * @param souce an instance of the InputStream
+     * @param target an instance of the OutputStream
      * @throws IOException
      * @throws InterruptedException
      */
@@ -132,61 +143,47 @@ public class DownloadService {
     }
 
     /**
-     * The class designed for download speed limiting.
-     * The fillBucket() method fills the token bucket over determinate periods with values
-     * depending on download speed limit within a separate thread.
-     * The emptyBucket() method empties the token bucket by value passed as a parameter
-     * only if the token bucket is greater or equal to this value.
-     * Otherwise the method stops its thread until the token bucket is full enough. 
-     * It is supposed to be used within a method that reads data from input stream,
-     * thus limiting number of data readings depending on set speed limit value.
+     * The class designed for download speed limiting. The fillBucket() method fills the token bucket over determinate
+     * periods with values depending on download speed limit within a separate thread. The emptyBucket() method empties
+     * the token bucket by value passed as a parameter only if the token bucket is greater or equal to this value.
+     * Otherwise the method stops its thread until the token bucket is full enough. It is supposed to be used within a
+     * method that reads data from input stream, thus limiting number of data readings depending on set speed limit
+     * value.
+     * 
      * @author kolokolov
      */
     private class TokenBucket {
         private final int BUCKET_FILLING_DELAY = 5; // ms
         private final int SPEED_LIMIT;
-        
+
         private int bucket;
-        
+
         private final Lock bucketLock = new ReentrantLock();
         private final Condition enoughTokens = bucketLock.newCondition();
         private final Condition notFullBucket = bucketLock.newCondition();
-        
+
         public TokenBucket(int speedLimit) {
             this.SPEED_LIMIT = speedLimit;
-            fillBucket();
         }
 
-        public void fillBucket() {
-            final int BUCKET_FILLING_STEP = SPEED_LIMIT * BUCKET_FILLING_DELAY / 1000 / 8; //bytes
-            final int BUCKET_LIMIT = BUFFER_SIZE > BUCKET_FILLING_STEP ? BUFFER_SIZE * 2 : BUCKET_FILLING_STEP * 2; //bytes
+        public void fillBucket() throws InterruptedException {
+            final int BUCKET_FILLING_STEP = SPEED_LIMIT * BUCKET_FILLING_DELAY / 1000 / 8; // bytes
+            final int BUCKET_LIMIT = BUFFER_SIZE > BUCKET_FILLING_STEP ? BUFFER_SIZE * 2 : BUCKET_FILLING_STEP * 2; // bytes
             bucket = BUCKET_LIMIT;
-            
-            Thread bucketFiller = new Thread(() -> {
-                while (true) {
-                    bucketLock.lock();
-                    try {
-                        while (bucket >= BUCKET_LIMIT) {
-                            notFullBucket.await();
-                        }
-                        bucket += BUCKET_FILLING_STEP;
-                        enoughTokens.signalAll();
-                    } catch (InterruptedException e) {
-                        System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
-                        System.exit(1);
-                    } finally {
-                        bucketLock.unlock();
-                        try {
-                            Thread.sleep(BUCKET_FILLING_DELAY);
-                        } catch (InterruptedException e) {
-                            System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
-                            System.exit(1);
-                        }
+
+            while (true) {
+                bucketLock.lock();
+                try {
+                    while (bucket >= BUCKET_LIMIT) {
+                        notFullBucket.await();
                     }
+                    bucket += BUCKET_FILLING_STEP;
+                    enoughTokens.signalAll();
+                } finally {
+                    bucketLock.unlock();
+                    Thread.sleep(BUCKET_FILLING_DELAY);
                 }
-            });
-            bucketFiller.setDaemon(true);
-            bucketFiller.start();
+            }
         }
 
         public void emptyBucket(int byteCount) throws InterruptedException {
@@ -202,49 +199,51 @@ public class DownloadService {
             }
         }
     }
-    
+
     /**
      * The class designed for providing data storing to several files simultaneously.
+     * 
      * @author kolokolov
      */
     private class MultipleFileOutputStream extends OutputStream {
-        
+
         private final Set<FileOutputStream> fileOutputStreams = new HashSet<>();
-        
+
         /**
          * Creates an instance of the class using a collection of File type objects.
-         * @param files     a Collection of {@link File} type object
+         * 
+         * @param files a Collection of {@link File} type object
          * @throws FileNotFoundException
          */
         public MultipleFileOutputStream(Collection<File> files) throws FileNotFoundException {
             for (File file : files) {
                 if (file != null) {
                     this.fileOutputStreams.add(new FileOutputStream(file));
-                } 
+                }
             }
         }
-        
+
         @Override
         public void write(int b) throws IOException {
             for (FileOutputStream fos : fileOutputStreams) {
                 fos.write(b);
             }
         }
-        
+
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
             for (FileOutputStream fos : fileOutputStreams) {
                 fos.write(b, off, len);
             }
         }
-        
+
         @Override
         public void flush() throws IOException {
             for (FileOutputStream fos : fileOutputStreams) {
                 fos.flush();
             }
         }
-        
+
         @Override
         public void close() throws IOException {
             for (FileOutputStream fos : fileOutputStreams) {
