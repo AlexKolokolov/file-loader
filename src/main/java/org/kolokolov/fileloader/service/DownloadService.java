@@ -13,6 +13,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.FileUtils;
@@ -144,7 +147,11 @@ public class DownloadService {
         private final int SPEED_LIMIT;
         
         private int bucket;
-
+        
+        private final Lock lock = new ReentrantLock();
+        private final Condition notEmpty = lock.newCondition();
+        private final Condition notFull = lock.newCondition();
+        
         public TokenBucket(int speedLimit) {
             this.SPEED_LIMIT = speedLimit;
             fillBucket();
@@ -157,18 +164,19 @@ public class DownloadService {
             
             Thread bucketFiller = new Thread(() -> {
                 while (true) {
+                    lock.lock();
                     try {
-                        synchronized (this) {
-                            while (bucket >= BUCKET_LIMIT) {
-                                wait();
-                            }
-                            bucket += BUCKET_FILLING_STEP;
-                            Thread.sleep(BUCKET_FILLING_DELAY);
-                            notifyAll();
+                        while (bucket >= BUCKET_LIMIT) {
+                            notFull.await();
                         }
+                        bucket += BUCKET_FILLING_STEP;
+                        Thread.sleep(BUCKET_FILLING_DELAY);
+                        notEmpty.signalAll();
                     } catch (InterruptedException e) {
                         System.out.printf("Fatal error!!! Error message: %s%n", e.getMessage());
                         System.exit(1);
+                    } finally {
+                        lock.unlock();
                     }
                 }
             });
@@ -176,12 +184,17 @@ public class DownloadService {
             bucketFiller.start();
         }
 
-        public synchronized void emptyBucket(int byteCount) throws InterruptedException {
-            while (bucket < byteCount) {
-                wait();
+        public void emptyBucket(int byteCount) throws InterruptedException {
+            lock.lock();
+            try {
+                while (bucket < byteCount) {
+                    notEmpty.await();
+                }
+                bucket -= byteCount;
+                notFull.signal();
+            } finally {
+                lock.unlock();
             }
-            bucket -= byteCount;
-            notifyAll();
         }
     }
     
