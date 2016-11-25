@@ -12,7 +12,7 @@ the application will download them all at once.
 `mvn package` will create executable jar-file.
 
 usage: java -jar file-loader.jar<br>
- -f,--file <arg>     task file name<br>
- -l,--limit <arg>    speed limit<br>
- -n <arg>            number of downloading threads<br>
- -o,--output <arg>   output folder<br>
+ -f, --file \<arg\>    - task file name<br>
+ -l, --limit \<arg\>   - speed limit<br>
+ -n  \<arg\>           - number of downloading threads<br>
+ -o, --output <\arg\>  - output folder<br>
