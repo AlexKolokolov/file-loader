@@ -32,8 +32,6 @@ public class DownloadService {
 
     private ThreadService threadService;
     private TokenBucket tokenBuket;
-    
-    private Thread bucketFiller;
 
     /**
      * Creates an instance of the DownloadService class. If a proper speed limit value is passed than an instance of
@@ -47,7 +45,7 @@ public class DownloadService {
         this.threadService = threadService;
         if (speedLimit > 0) {
             this.tokenBuket = new TokenBucket(speedLimit);
-            this.bucketFiller = this.threadService.startNewDaemon(() -> {
+            this.threadService.startNewDaemon(() -> {
                 try {
                     this.tokenBuket.fillBucket();
                 } catch (InterruptedException e) {
@@ -55,7 +53,6 @@ public class DownloadService {
                     System.exit(1);
                 }
             });
-            
         }
     }
 
@@ -100,14 +97,14 @@ public class DownloadService {
 
             long downloadTime = System.currentTimeMillis() - startTime; // ms
             long fileSize = FileUtils.sizeOf(files.get(0)); // bytes
-            long downlodSpeed = 8 * fileSize * 1000 / downloadTime / 1024; // kbit/s
+            long downloadSpeed = 8 * fileSize * 1000 / downloadTime / 1024; // kbit/s
             String displayFileSize = FileUtils.byteCountToDisplaySize(fileSize); // in human readable format
             if (multipleFiles) {
                 System.out.printf("Files %s (%s each) have been downloaded at %d kbit/s%n", fileNames, displayFileSize,
-                        downlodSpeed);
+                        downloadSpeed);
             } else {
                 System.out.printf("File %s (%s) has been downloaded at %d kbit/s%n", fileNames, displayFileSize,
-                        downlodSpeed);
+                        downloadSpeed);
             }
             return true;
         } catch (IOException | InterruptedException e) {

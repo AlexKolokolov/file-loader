@@ -26,6 +26,7 @@ import org.kolokolov.fileloader.service.ThreadService;
 
 /**
  * The main application class with main method
+ * 
  * @author kolokolov
  */
 public class App {
@@ -80,6 +81,7 @@ public class App {
 
     /**
      * Parses the command line argument set and stores the values received form it in static variables.
+     * 
      * @param args the command line arguments array
      */
     public static void parseArgs(String[] args) {
@@ -136,7 +138,7 @@ public class App {
 
     /**
      * Analyzes passed an output folder name and creates the folder if it does not exist and can be created. 
-     * If folder creation failed it would close the application with error code '1'.
+     * If folder creation failed the application would be closed with error code '1'.
      * 
      * @return created folder
      */
@@ -153,11 +155,9 @@ public class App {
     }
 
     /**
-     * Parses task file using {@link TaskFileParser}, creates instances 
-     * of {@link Task} class and stores them in a Map.
-     * If several task descriptions include the same URL, then files from
-     * such task descriptions will be added to the same task instance
-     * in order to avoid multiple downloading of the same file.
+     * Parses task file using {@link TaskFileParser}, creates instances of {@link Task} class and stores them in a Map.
+     * If several task descriptions include the same URL, then files from such task descriptions will be added to the
+     * same task instance in order to avoid multiple downloading of the same file.
      */
     public void getTasks() {
         File outputFolder = createOutputFolder();
@@ -187,8 +187,8 @@ public class App {
     }
 
     /**
-     * Process the map with task stored in. Tries to perform every task using {@link DownloadService} 
-     * and then stores the results of tasks performing to reports map.
+     * Process the map with task stored in. Tries to perform every task using {@link DownloadService} and then stores
+     * the results of tasks performing to reports map.
      */
     public void processTasks() {
 
