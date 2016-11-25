@@ -22,10 +22,10 @@ public class ThreadService {
     }
 
     /**
-     * Method provides execution of passed lambda expression within a new thread. The new thread is received from the
+     * Provides execution of passed lambda expression within a new thread. The new thread is received from the
      * pool if there is spare one, and returns to the pool after lambda expression execution.
      * 
-     * @param suppler instance of {@link BooleanSupplier} functional interface or lambda expression that is supposed to
+     * @param callable instance of {@link Callable<Boolean>} functional interface or lambda expression that is supposed to
      *            return a boolean value
      * @return an object with the Future interface that returns the result returned by the lambda expression after its
      *         execution.
@@ -34,6 +34,12 @@ public class ThreadService {
         return downloadThreadPool.submit(collable);
     }
 
+    /**
+     * Provides execution of passed lambda expression within a new daemon thread.
+     * 
+     * @param runnable instance of {@link Runnable} functional interface or void lambda expression.
+     * @return a reference to new daemon thread
+     */ 
     public Thread startNewDaemon(Runnable runnable) {
         Thread newDaemon = new Thread(runnable);
         newDaemon.setDaemon(true);
