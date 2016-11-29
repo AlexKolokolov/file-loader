@@ -4,7 +4,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.BooleanSupplier;
 
 /**
  * The service is designed to provide a method execution in separate thread. It creates thread pool with size depending
