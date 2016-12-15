@@ -28,7 +28,7 @@ import org.apache.commons.io.FileUtils;
  */
 public class DownloadService {
 
-    private final int BUFFER_SIZE = 1024;
+    private int bufferSize = 1024; //bytes
 
     private ThreadService threadService;
     private TokenBucket tokenBuket;
@@ -91,13 +91,13 @@ public class DownloadService {
                 }
             }
 
-            long startTime = System.currentTimeMillis();
+            long startTime = System.nanoTime();
 
             copyBytesIfAllowed(input, output);
 
-            long downloadTime = System.currentTimeMillis() - startTime; // ms
+            long downloadTime = System.nanoTime() - startTime; // ms
             long fileSize = FileUtils.sizeOf(files.get(0)); // bytes
-            long downloadSpeed = 8 * fileSize * 1000 / downloadTime / 1024; // kbit/s
+            long downloadSpeed = 8 * fileSize * 1_000_000_000 / downloadTime / 1024; // kbit/s
             String displayFileSize = FileUtils.byteCountToDisplaySize(fileSize); // in human readable format
             if (multipleFiles) {
                 System.out.printf("Files %s (%s each) have been downloaded at %d kbit/s%n", fileNames, displayFileSize,
@@ -129,7 +129,7 @@ public class DownloadService {
      */
     private void copyBytesIfAllowed(InputStream source, OutputStream target) throws IOException, InterruptedException {
         int count;
-        byte[] buffer = new byte[BUFFER_SIZE];
+        byte[] buffer = new byte[bufferSize];
         while ((count = source.read(buffer)) != -1) {
             if (tokenBuket != null) {
                 tokenBuket.emptyBucket(count);
@@ -150,29 +150,29 @@ public class DownloadService {
      * @author kolokolov
      */
     private class TokenBucket {
-        private final int BUCKET_FILLING_DELAY = 5; // ms
+        private final int BUCKET_FILLING_DELAY = 2; // ms
         private final int SPEED_LIMIT;
-
+        
         private int bucket;
 
         private final Lock bucketLock = new ReentrantLock();
         private final Condition enoughTokens = bucketLock.newCondition();
-        private final Condition notFullBucket = bucketLock.newCondition();
+        private final Condition fillingAllowed = bucketLock.newCondition();
 
         public TokenBucket(int speedLimit) {
-            this.SPEED_LIMIT = speedLimit;
+            this.SPEED_LIMIT = speedLimit;    
         }
 
         public void fillBucket() throws InterruptedException {
             final int BUCKET_FILLING_STEP = SPEED_LIMIT * BUCKET_FILLING_DELAY / 1000 / 8; // bytes
-            final int BUCKET_LIMIT = BUFFER_SIZE > BUCKET_FILLING_STEP ? BUFFER_SIZE * 2 : BUCKET_FILLING_STEP * 2; // bytes
-            bucket = BUCKET_LIMIT;
-
+            bufferSize = BUCKET_FILLING_STEP / 5;
+            bucket = BUCKET_FILLING_STEP;
+            
             while (true) {
                 bucketLock.lock();
                 try {
-                    while (bucket >= BUCKET_LIMIT) {
-                        notFullBucket.await();
+                    while (bucket >= BUCKET_FILLING_STEP) {
+                        fillingAllowed.await();
                     }
                     bucket += BUCKET_FILLING_STEP;
                     enoughTokens.signalAll();
@@ -185,12 +185,13 @@ public class DownloadService {
 
         public void emptyBucket(int byteCount) throws InterruptedException {
             bucketLock.lock();
+            fillingAllowed.signal();
             try {
                 while (bucket < byteCount) {
                     enoughTokens.await();
                 }
                 bucket -= byteCount;
-                notFullBucket.signal();
+                fillingAllowed.signal();
             } finally {
                 bucketLock.unlock();
             }

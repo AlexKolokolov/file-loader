@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -36,14 +38,11 @@ public class App {
     private static int speedLimit;
     private static String outputFolderName = "download";
 
-    private Map<URL, Task> tasksMap = new HashMap<>();
     private int tasksTotal;
     private int downloaded;
     private long downloadedSize;
     private int failed;
     private long elapsedTime;
-
-    private Map<Task, Future<Boolean>> downloadReports = new HashMap<>();
 
     private TaskFileParser parser;
     private DownloadService downloadService;
@@ -59,8 +58,10 @@ public class App {
 
         App app = new App();
         app.printInitReport();
-        app.getTasks();
-        app.processTasks();
+        Set<TaskDescription> taskDescriptions = app.getTaskDescriptions(taskFileName);
+        Map<URL, Task> taskMap = app.getTasks(taskDescriptions);
+        Map<Task, Future<Boolean>> downloadReports = app.startTasks(taskMap);
+        app.processDownloadReports(downloadReports);
         app.printReport();
         System.exit(0);
     }
@@ -137,8 +138,8 @@ public class App {
     }
 
     /**
-     * Analyzes passed an output folder name and creates the folder if it does not exist and can be created. 
-     * If folder creation failed the application would be closed with error code '1'.
+     * Analyzes passed an output folder name and creates the folder if it does not exist and can be created. If folder
+     * creation failed the application would be closed with error code '1'.
      * 
      * @return created folder
      */
@@ -153,50 +154,77 @@ public class App {
         }
         return outputFolder;
     }
-
+    
     /**
-     * Parses task file using {@link TaskFileParser}, creates instances of {@link Task} class and stores them in a Map.
-     * If several task descriptions include the same URL, then files from such task descriptions will be added to the
-     * same task instance in order to avoid multiple downloading of the same file.
+     * Uses the object of {@link TaskFileParser} class to parse a task file
+     * and get a set of {@link TaskDescription} objects.
+     * 
+     * @param taskFileName a name of the task file
+     * @return a set of an objects of {@link TaskDescription} type
      */
-    public void getTasks() {
-        File outputFolder = createOutputFolder();
+    public Set<TaskDescription> getTaskDescriptions(String taskFileName) {
         File taskFile = new File(taskFileName);
         System.out.printf("Processing task file '%s'%n", taskFile.getName());
-        Set<TaskDescription> taskDescriptions = parser.parseTaskFile(taskFile);
-        if (taskDescriptions != null) {
-            taskDescriptions.parallelStream().forEach(td -> {
-                File file = new File(outputFolder, td.getFile());
-                try {
-                    System.out.printf("Processing URL: '%s'%n", td.getUrl());
-                    URL url = new URL(td.getUrl());
-                    Task task = new Task(url, file);
-                    tasksMap.merge(url, task, Task::combainTasks);
-                } catch (IOException ioe) {
-                    System.out.printf("Error processing task description '%s : %s'%n", td.getUrl(), td.getFile());
-                    System.out.printf("Error message: %s%n", ioe.getMessage());
-                }
-            });
-            tasksTotal = tasksMap.size();
-            System.out.printf("Total tasks: %d%n", tasksTotal);
-            System.out.printf("Output folder: '%s'%n", outputFolder.getAbsolutePath());
-        } else {
-            System.err.printf("Error getting tasks from file '%s'%n", taskFile.getName());
+        Set<TaskDescription> taskDescriptions = null;
+        try {
+            taskDescriptions = parser.parseTaskFile(taskFile);
+        } catch (IOException | ParseException e) {
+            System.err.println(e.getMessage());
             System.exit(1);
         }
+        return taskDescriptions;
     }
 
     /**
-     * Process the map with task stored in. Tries to perform every task using {@link DownloadService} and then stores
-     * the results of tasks performing to reports map.
+     * Creates instances of {@link Task} class based on task descriptions and stores them into a Map.
+     * If several task descriptions include the same URL, then files from such task descriptions will be added to the
+     * same task instance in order to avoid multiple downloading of the same file.
+     * 
+     * @param taskDescriptions a set of an objects of {@link TaskDescription} type
+     * @return a map of URLs mapped on the appropriate tasks
      */
-    public void processTasks() {
+    public Map<URL, Task> getTasks(Set<TaskDescription> taskDescriptions) {
+        File outputFolder = createOutputFolder();
+        Map<URL, Task> taskMap = new HashMap<>();
+        taskDescriptions.parallelStream().forEach(td -> {
+            File file = new File(outputFolder, td.getFile());
+            try {
+                System.out.printf("Processing URL: '%s'%n", td.getUrl());
+                URL url = new URL(td.getUrl());
+                Task task = new Task(url, file);
+                taskMap.merge(url, task, Task::combainTasks);
+            } catch (IOException ioe) {
+                System.out.printf("Error processing task description '%s : %s'%n", td.getUrl(), td.getFile());
+                System.out.printf("Error message: %s%n", ioe.getMessage());
+            }
+        });
+        tasksTotal = taskMap.size();
+        System.out.printf("Total tasks: %d%n", tasksTotal);
+        System.out.printf("Output folder: '%s'%n", outputFolder.getAbsolutePath());
+        return taskMap;
+    }
 
-        long startTime = System.currentTimeMillis();
+    /**
+     * Process the map with task stored in. 
+     * Tries to start every task using {@link DownloadService} and then stores the
+     * results of tasks performing to reports map.
+     * 
+     * @param taskMap a map of URLs mapped on the appropriate tasks
+     * @return a map of tasks mapped on their {@link Future} report
+     */
+    public Map<Task, Future<Boolean>> startTasks(Map<URL, Task> taskMap) {
+        return taskMap.values().stream().collect(Collectors.toMap(Function.identity(),
+                task -> downloadService.downloadFilesInNewThread(task.getUrl(), task.getFiles())));
+    }
 
-        tasksMap.values().forEach(task -> downloadReports.put(task,
-                downloadService.downloadFilesInNewThread(task.getUrl(), task.getFiles())));
-
+    /**
+     * Processes the map of {@link Future} download reports and
+     * analyzes the results.
+     * 
+     * @param downloadReports a map of tasks mapped on their {@link Future} report
+     */
+    public void processDownloadReports(Map<Task, Future<Boolean>> downloadReports) {
+        long startTime = System.nanoTime();
         downloadReports.forEach((task, report) -> {
             try {
                 if (report.get()) {
@@ -207,10 +235,10 @@ public class App {
             } catch (InterruptedException | ExecutionException e) {
                 System.out.printf("Error downloading from %s%n", task.getOneOfFiles());
                 System.out.printf("Error message: %s%n", e.getMessage());
+                e.printStackTrace();
             }
         });
-
-        elapsedTime = System.currentTimeMillis() - startTime;
+        elapsedTime = System.nanoTime() - startTime;
     }
 
     public void printReport() {
@@ -219,8 +247,8 @@ public class App {
         System.out.printf("Completed: %d%n", downloaded);
         System.out.printf("Failed: %d%n", failed);
         System.out.printf("Total downloaded size: %s%n", FileUtils.byteCountToDisplaySize(downloadedSize));
-        System.out.printf("Total download time: %.03f sec%n", (double) elapsedTime / 1000);
-        System.out.printf("Average download speed: %.03f kbit/s%n", 8.0 * 1000 * downloadedSize / elapsedTime / 1024);
+        System.out.printf("Total download time: %.03f sec%n", (double) elapsedTime / 1_000_000_000);
+        System.out.printf("Average download speed: %.03f kbit/s%n", 8.0 * 1_000_000_000 * downloadedSize / elapsedTime / 1024);
     }
 
     private static class Task {

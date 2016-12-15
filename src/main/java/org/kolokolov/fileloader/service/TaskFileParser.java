@@ -1,6 +1,7 @@
 package org.kolokolov.fileloader.service;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -9,62 +10,81 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.commons.cli.ParseException;
 import org.apache.commons.io.FileUtils;
 
 /**
- * The service is designed for parsing a download tasks file 
- * and return a set of task descriptions to main application
+ * The service is designed for parsing a download tasks file and return a set of task descriptions to main application
+ * 
  * @author kolokolov
  */
 public class TaskFileParser {
 
-    public Set<TaskDescription> parseTaskFile(File file) {
+    /**
+     * Parses the task file and returns a set of objects of {@link TaskDescription} type
+     * produced of its lines.
+     *  
+     * @param file a task file to be parsed
+     * @return a set of an objects of {@link TaskDescription} type
+     * @throws IOException
+     * @throws ParseException
+     */
+    public Set<TaskDescription> parseTaskFile(File file) throws IOException, ParseException {
+        Set<TaskDescription> taskSet = null;
         if (file.exists() && file.canRead()) {
-            List<String> lines = parseFileToLines(file);
+            List<String> lines = FileUtils.readLines(file, StandardCharsets.UTF_8);
             if (lines != null) {
-                Set<TaskDescription> taskSet = linesToTaskSet(lines);
-                if (taskSet != null) {
-                    if (!targetFileHasDuplicates(taskSet)) {
-                        return taskSet;
-                    } else {
-                        System.err.printf("Task file '%s' includes target file duplications%n", file.getName());
-                    }
-                } else {
-                    System.err.printf("Task file '%s' format errors%n", file.getName());
+                taskSet = linesToTaskSet(lines);
+                if (taskSet != null && targetFileHasDuplicates(taskSet)) {
+                    String errorMsg = String.format("Task file '%s' includes target file duplications%n", file.getName());
+                    throw new ParseException(errorMsg);
                 }
+            } else {
+                String errorMsg = String.format("Task file '%s' format error%n", file.getName());
+                throw new ParseException(errorMsg);
             }
         } else {
-            System.err.printf("Task file '%s' does not exist or can not be read%n", file.getName());
+            String errorMsg = String.format("Task file '%s' does not exist or cannot be read%n", file.getName());
+            throw new FileNotFoundException(errorMsg);
         }
-        return null;
+        return taskSet;
     }
-
-    public List<String> parseFileToLines(File file) {
-        List<String> lines = null;
-        try {
-            lines = FileUtils.readLines(file, StandardCharsets.UTF_8);
-        } catch (IOException ioe) {
-            System.err.printf("File %s reading error: %s%n", file.getName(), ioe.getMessage());
-        }
-        return lines;
-    }
-
+    
+    /**
+     * Processes the list of the task file lines to set of objects
+     * of the {@link TaskDescription} type.
+     * 
+     * @param lines a list of task file lines
+     * @return a set of an objects of {@link TaskDescription} type
+     */
     public Set<TaskDescription> linesToTaskSet(List<String> lines) {
-        return lines.parallelStream().map(line -> {
-            String[] pair = line.split(" ");
-            if (pair.length == 2) {
-                return new TaskDescription(pair[0], pair[1]);
-            } else {
-                System.out.printf("Error processing line %s%n", line);
-                return null;
-            }
-        }).filter(td -> td != null).collect(Collectors.toSet());
+        return lines.parallelStream().map(line -> this.splitLine(line))
+                .filter(td -> td != null)
+                .collect(Collectors.toSet());
+    }
+    
+    /**
+     * Splits a line of the task file into two parts and builds an object of the
+     * {@link TaskDescription} class.
+     * 
+     * @param line a line of the task file. It is supposed to consist of URL and target file name 
+     * @return an object of the {@link TaskDescription} type
+     */
+    public TaskDescription splitLine(String line) {
+        TaskDescription taskDescription = null;
+        String[] pair = line.split(" ");
+        if (pair.length == 2) {
+            taskDescription = new TaskDescription(pair[0], pair[1]);
+        } else {
+            System.out.printf("Error processing line %s%n", line);
+        }
+        return taskDescription;
     }
 
     /**
-     * Method checks whether there were equal target file names 
-     * mapped on different links in the task file.
-     * @param set of download task descriptions.
+     * Checks whether there were equal target file names mapped on different links in the task file.
+     * 
+     * @param taskSet a set of download task descriptions.
      * @return true if the target file name duplications are present in task file
      */
     public boolean targetFileHasDuplicates(Set<TaskDescription> taskSet) {
@@ -72,7 +92,7 @@ public class TaskFileParser {
         taskSet.forEach(task -> {
             TaskDescription duplication;
             if ((duplication = testMap.put(task.getFile(), task)) != null) {
-                System.out.printf("File name '%s' mapped on different links was found%n", duplication.getFile());
+                System.out.printf("File name '%s' mapped on different links has been found%n", duplication.getFile());
             }
         });
         return testMap.size() != taskSet.size();
