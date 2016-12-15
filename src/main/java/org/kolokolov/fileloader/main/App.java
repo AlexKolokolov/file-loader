@@ -59,7 +59,7 @@ public class App {
         App app = new App();
         app.printInitReport();
         Set<TaskDescription> taskDescriptions = app.getTaskDescriptions(taskFileName);
-        Map<URL, Task> taskMap = app.getTasks(taskDescriptions);
+        Map<URL, Task> taskMap = app.createTasks(taskDescriptions);
         Map<Task, Future<Boolean>> downloadReports = app.startTasks(taskMap);
         app.processDownloadReports(downloadReports);
         app.printReport();
@@ -183,7 +183,7 @@ public class App {
      * @param taskDescriptions a set of an objects of {@link TaskDescription} type
      * @return a map of URLs mapped on the appropriate tasks
      */
-    public Map<URL, Task> getTasks(Set<TaskDescription> taskDescriptions) {
+    public Map<URL, Task> createTasks(Set<TaskDescription> taskDescriptions) {
         File outputFolder = createOutputFolder();
         Map<URL, Task> taskMap = new HashMap<>();
         taskDescriptions.parallelStream().forEach(td -> {
