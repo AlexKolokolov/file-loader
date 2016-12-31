@@ -45,4 +45,8 @@ public class ThreadService {
         newDaemon.start();
         return newDaemon;
     }
+    
+    public void shutdownDownloadThreadPool() {
+        downloadThreadPool.shutdown();
+    }
 }

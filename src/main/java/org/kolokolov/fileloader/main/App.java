@@ -63,7 +63,6 @@ public class App {
         Map<Task, Future<Boolean>> downloadReports = app.startTasks(taskMap);
         app.processDownloadReports(downloadReports);
         app.printReport();
-        System.exit(0);
     }
 
     public void printInitReport() {
@@ -239,6 +238,7 @@ public class App {
             }
         });
         elapsedTime = System.nanoTime() - startTime;
+        downloadService.closeDownloadThreads();
     }
 
     public void printReport() {

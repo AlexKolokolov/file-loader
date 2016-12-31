@@ -138,6 +138,10 @@ public class DownloadService {
         }
         target.flush();
     }
+    
+    public void closeDownloadThreads() {
+        threadService.shutdownDownloadThreadPool();
+    }
 
     /**
      * The class designed for download speed limiting. The fillBucket() method fills the token bucket over determinate
